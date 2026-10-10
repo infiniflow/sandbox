@@ -15,6 +15,7 @@
 #
 import asyncio
 import contextlib
+import json
 import os
 from queue import Empty, Queue
 
@@ -124,9 +125,16 @@ async def create_container(name: str, language: SupportLanguage) -> bool:
     elif language == SupportLanguage.NODEJS:
         create_args.append(os.getenv("SANDBOX_BASE_NODEJS_IMAGE", "sandbox-base-nodejs:latest"))
 
-    logger.info(f"Sandbox config:\n\t {create_args}")
-
     try:
+        return_code, stdout, stderr = await async_run_command("docker", "info", "--format", "{{json .Runtimes}}", timeout=5)
+        if return_code != 0:
+            logger.error(f"❌ Failed to check Docker runtimes for {name}: {stderr}")
+            return False
+        if "runsc" not in json.loads(stdout):
+            logger.warning("⚠️ Docker runtime runsc is unavailable; falling back to runc without gVisor isolation")
+            create_args[create_args.index("--runtime=runsc")] = "--runtime=runc"
+
+        logger.info(f"Sandbox config:\n\t {create_args}")
         return_code, _, stderr = await async_run_command(*create_args, timeout=10)
         if return_code != 0:
             logger.error(f"❌ Container creation failed {name}: {stderr}")
