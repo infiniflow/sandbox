@@ -119,14 +119,14 @@ Wraps the existing executor_manager implementation. The implementation file is l
 
 **Prerequisites**:
 
-- gVisor (runsc): Required for secure container isolation. Install with:
+- gVisor (runsc): Recommended for secure container isolation. If absent from Docker's registered runtimes, the manager logs a warning and uses `runc` without gVisor isolation. Install with:
   ```bash
   go install gvisor.dev/gvisor/runsc@latest
   sudo cp ~/go/bin/runsc /usr/local/bin/
   runsc --version
   ```
   Or download from: https://github.com/google/gvisor/releases
-- Docker: Docker runtime with gVisor support.
+- Docker: Docker runtime with `runc`; register `runsc` to enable gVisor isolation.
 - Base Images: Pull sandbox base images:
   ```bash
   docker pull infiniflow/sandbox-base-python:latest
@@ -159,7 +159,7 @@ the RAGFlow-side client without resizing anything.
 - JavaScript
 
 **Security**:
-- gVisor (runsc runtime)
+- gVisor when the `runsc` runtime is registered with Docker; otherwise `runc`
 - seccomp
 - read-only filesystem
 - memory limits
@@ -173,12 +173,12 @@ the RAGFlow-side client without resizing anything.
 
 **Limitations**:
 - Operational overhead, finite resources
-- Requires gVisor installation for security
+- The `runc` fallback does not provide gVisor isolation
 - Pool exhaustion causes "Container pool is busy" errors
 
 **Common issues**:
 - `"Container pool is busy"`: Raise `SANDBOX_EXECUTOR_MANAGER_POOL_SIZE` above the baseline your deployment already applies — 5 with the standalone compose file, 3 in the main RAGFlow stack
-- `Container creation fails`: Ensure gVisor is installed and accessible at `/usr/local/bin/runsc`
+- `Container creation fails`: Check Docker daemon access and the selected runtime. If `runsc` is registered, ensure its configured executable is installed and usable.
 
 #### 2.2.2 Aliyun code interpreter provider
 

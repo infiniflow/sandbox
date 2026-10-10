@@ -30,6 +30,7 @@ flag used for sandbox runner containers.
 
 import asyncio
 import base64
+import logging
 from pathlib import Path
 
 import pytest
@@ -182,6 +183,8 @@ class TestContainerNetworkIsolation:
 
         async def fake_run_command(*args, timeout=5):
             calls.append(list(args))
+            if args[:2] == ("docker", "info"):
+                return 0, '{"runsc": {}, "runc": {}}', ""
             return 0, "true", ""
 
         import core.container as container_module
@@ -211,6 +214,47 @@ class TestContainerNetworkIsolation:
         assert "--runtime=runsc" in argv
         assert "--read-only" in argv
         assert argv[argv.index("--user") + 1] == "nobody"
+
+
+class TestContainerRuntimeSelection:
+    @pytest.mark.parametrize("language", [SupportLanguage.PYTHON, SupportLanguage.NODEJS])
+    @pytest.mark.parametrize("runtimes, runtime", [('{"runsc": {}, "runc": {}}', "runsc"), ('{"runc": {}}', "runc")])
+    def test_selects_available_runtime(self, monkeypatch, caplog, language, runtimes, runtime):
+        import core.container as container_module
+
+        calls = []
+
+        async def fake_run_command(*args, timeout=5):
+            calls.append(args)
+            if args[:2] == ("docker", "info"):
+                return 0, runtimes, ""
+            return 0, "true", ""
+
+        monkeypatch.setattr(container_module, "async_run_command", fake_run_command)
+        with caplog.at_level(logging.WARNING, logger="sandbox"):
+            assert asyncio.run(container_module.create_container("sandbox_test_0", language)) is True
+        argv = next(args for args in calls if args[:2] == ("docker", "run"))
+        assert f"--runtime={runtime}" in argv
+        assert ("falling back to runc" in caplog.text) == (runtime == "runc")
+        if language == SupportLanguage.NODEJS:
+            assert any(args[:2] == ("docker", "exec") for args in calls)
+
+    @pytest.mark.parametrize("info_result", [(1, "", "daemon unavailable"), (0, "invalid json", "")])
+    def test_runtime_check_failure_does_not_create_container(self, monkeypatch, caplog, info_result):
+        import core.container as container_module
+
+        calls = []
+
+        async def fake_run_command(*args, timeout=5):
+            calls.append(args)
+            return info_result
+
+        monkeypatch.setattr(container_module, "async_run_command", fake_run_command)
+        with caplog.at_level(logging.ERROR, logger="sandbox"):
+            assert asyncio.run(container_module.create_container("sandbox_test_0", SupportLanguage.PYTHON)) is False
+        assert len(calls) == 1
+        assert calls[0][:2] == ("docker", "info")
+        assert caplog.records
 
 
 class TestStandaloneComposeEnvironment:

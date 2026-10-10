@@ -23,7 +23,7 @@ A secure, pluggable code execution backend for RAGFlow and beyond.
 #### Required
 
 - Linux distro compatible with gVisor
-- [gVisor](https://gvisor.dev/docs/user_guide/install/)
+- [gVisor](https://gvisor.dev/docs/user_guide/install/) is recommended; without the Docker `runsc` runtime, the manager logs a warning and uses `runc`.
 - Docker >= `25.0` (API 1.44+) — executor manager now bundles Docker CLI `29.1.0` to match newer daemons.
 - Docker Compose >= `v2.26.1` like [RAGFlow](https://github.com/infiniflow/ragflow)
 - [uv](https://docs.astral.sh/uv/) as package and project manager
@@ -143,6 +143,8 @@ The RAGFlow sandbox is designed to balance security and usability, offering soli
 ### ✅ gVisor Isolation
 
 At its core, we use [gVisor](https://gvisor.dev/docs/architecture_guide/security/), a user-space kernel, to isolate code execution from the host system. gVisor intercepts and restricts syscalls, offering robust protection against container escapes and privilege escalations.
+
+Before creating each runner container, the manager checks Docker's registered runtimes. When `runsc` is absent, it logs a warning and starts the container with `runc`, which does not provide gVisor isolation. Failure to query Docker's runtimes prevents container creation.
 
 ### 🔒 Optional seccomp Support (Advanced)
 
@@ -308,7 +310,7 @@ Follow this checklist to troubleshoot:
 
   `HTTPConnectionPool(host='sandbox-executor-manager', port=9385): Read timed out.`
 
-  Cause: `runsc` is an unknown or invalid Docker runtime.
+  If `runsc` is not registered with Docker, the manager warns and uses `runc`. If `runsc` is registered but fails to start, container creation still fails.
   **Fix:**
 
   - Install gVisor
